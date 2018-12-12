@@ -92,27 +92,27 @@ def layer(W, x, assignments, drop):
 
 
 def net():
-		master = 0
-		W = np.array([[1., 2., 3.], [4., 5., 6.], [7., 8., 9.],
-		              [1., 2., 3.], [4., 5., 6.], [7., 8., 9.],
-		              [1., 2., 3.], [4., 5., 6.], [7., 8., 9.],
-		              [1., 2., 3.], [4., 5., 6.], [7., 8., 9.],
-		              [1., 2., 3.], [4., 5., 6.], [7., 8., 9.],
-		              [1., 2., 3.], [4., 5., 6.], [7., 8., 9.],
-		              [1., 2., 3.], [4., 5., 6.]])
-		W = torch.tensor(W)
+        master = 0
+        W = np.array([[1., 2., 3.], [4., 5., 6.], [7., 8., 9.],
+                      [1., 2., 3.], [4., 5., 6.], [7., 8., 9.],
+                      [1., 2., 3.], [4., 5., 6.], [7., 8., 9.],
+                      [1., 2., 3.], [4., 5., 6.], [7., 8., 9.],
+                      [1., 2., 3.], [4., 5., 6.], [7., 8., 9.],
+                      [1., 2., 3.], [4., 5., 6.], [7., 8., 9.],
+                      [1., 2., 3.], [4., 5., 6.]])
+        W = torch.tensor(W)
 
-		x = np.array([[3., 3.], [1., 1.], [4., 4.]])
-		x = torch.tensor(x)
+        x = np.array([[3., 3.], [1., 1.], [4., 4.]])
+        x = torch.tensor(x)
 
-		assignments = np.array([master, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
-		drop = 0.5
-		y1 = layer(W, x, assignments, drop)
-		assignments = np.array([master, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21])
-		y2 = layer(W, x, assignments, drop)
-		if(dist.get_rank() == assignments[0]):
-			print(y1)
-			print(y2)
+        assignments = np.array([master, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+        drop = 0.5
+        y1 = layer(W, x, assignments, drop)
+        assignments = np.array([master, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21])
+        y2 = layer(W, x, assignments, drop)
+        if(dist.get_rank() == assignments[0]):
+            print(y1)
+            print(y2)
 
 
 def init_processes(fn, backend='mpi'):
