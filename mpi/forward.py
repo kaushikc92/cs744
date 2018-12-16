@@ -44,7 +44,7 @@ def shout(msg):
     if(DEBUG):
         print("Node " + str(dist.get_rank()) + " " + str(getAddress()) + " " + str(msg))
 
-def layer(W, x, assignments, drop):
+def layer(W, x, assignments, drop, m, n):
     t1 = time.time()
     master = assignments[0]
     pseudo_master = assignments[1]
@@ -53,7 +53,6 @@ def layer(W, x, assignments, drop):
     num_slaves = len(slaves)
     num_recv = int((1 - drop)*num_slaves)
 
-    m, n = W.size()
     _, p = x.size()
 
     W_s = torch.zeros(m//num_slaves, n)
@@ -127,9 +126,12 @@ def net(drop):
 
     master = 0
     learning_rate = 1e-6
+    dropout = 0
 
-    W1 = torch.empty(m, n)
+    W1 = None
+    W2_t = None
     x = torch.empty(n, batch_size)
+    grad_y_pred = torch.empty(num_output, batch_size)
 
     if(dist.get_rank() == 0):
         W1 = torch.randn(m, n)
@@ -139,7 +141,7 @@ def net(drop):
     
     for t in range(100):
         assignments = np.arange(0, 2 + num_slaves)
-        h = layer(W1, x, assignments, 0)
+        h = layer(W1, x, assignments, dropout, m, n)
 
         if(dist.get_rank() == 0):
             h_relu = h.clamp(min=0)
@@ -155,7 +157,13 @@ def net(drop):
             # Backprop to compute gradients of w1 and w2 with respect to loss
             grad_y_pred = 2.0 * (y_pred - y)
             grad_w2 = grad_y_pred.mm(h_relu.t()) 
-            grad_h_relu = W2.t().mm(grad_y_pred)
+
+            #grad_h_relu = W2.t().mm(grad_y_pred)
+            W2_t = W2.t()
+
+        grad_h_relu = layer(W2_t, grad_y_pred, assignments, 0, m, num_output)
+            
+        if(dist.get_rank() == 0):
             grad_h = grad_h_relu.clone()
             grad_h[h < 0] = 0
             grad_w1 = grad_h.mm(x.t())
