@@ -59,9 +59,12 @@ def layer(W, x, assignments, drop):
     W_s = torch.zeros(m//num_slaves, n)
     shards = []
 
+    if(dist.get_rank() in [0, 1]):
+        index_list = np.arange(m)
+        np.random.shuffle(index_list)
+
     if(dist.get_rank() == 0):
-            shards = [W_s] + [W[m//num_slaves*i:m//num_slaves*(i+1)] for i in range(num_slaves)] 
-            #shards = [W1_s] + [W1[index_list[m//num_slaves*i:m//num_slaves*(i+1)]] for i in range(num_slaves)] 
+            shards = [W_s] + [W[index_list[m//num_slaves*i:m//num_slaves*(i+1)]] for i in range(num_slaves)] 
 
     group = dist.new_group([0] + [i for i in range(2,2+num_slaves)])
     group = dist.new_group([master] + list(slaves))
@@ -73,7 +76,6 @@ def layer(W, x, assignments, drop):
 
         req = dist.irecv(tensor=y, src=pseudo_master)
         req.wait()
-        shout("Received top 50 percent")
         t2 = time.time()
         return y
 
@@ -84,7 +86,7 @@ def layer(W, x, assignments, drop):
         reqPieces = []
         for i in range(num_slaves):
             reqPieces.append(dist.irecv(tensor=y1[m//num_slaves*i : m//num_slaves*(i+1)], src=slaves[i]))
-        
+            
         count = 0
         recvd = [0]*num_slaves
         while(count < num_recv):
@@ -92,7 +94,7 @@ def layer(W, x, assignments, drop):
                 if(reqPieces[i].is_completed() and recvd[i]==0):
                     count = count + 1
                     recvd[i] = 1
-                    y2[m//num_slaves*i:m//num_slaves*(i+1)] = y1[m//num_slaves*i:m//num_slaves*(i+1)]
+                    y2[index_list[m//num_slaves*i:m//num_slaves*(i+1)]] = y1[m//num_slaves*i:m//num_slaves*(i+1)]
                 if(count == num_recv):                    
                     break
 
@@ -104,13 +106,9 @@ def layer(W, x, assignments, drop):
 
     
     elif(dist.get_rank() in slaves):
-        #straggler()
-
         out = torch.zeros(m//num_slaves, p)
         out[:] = torch.matmul(W_s, x)/(1 - drop)
         req = dist.isend(tensor=out, dst=pseudo_master)
-
-        shout("started sending ")
         req.wait()
 
     else:
@@ -121,8 +119,8 @@ def net(drop):
 
     np.random.seed(0)
 
-    m = 1000 #100
-    n = 100  #1000
+    m = 1000 #1000
+    n = 100  #100
     num_output =10
     batch_size = 64
     num_slaves = 10
@@ -140,26 +138,11 @@ def net(drop):
         y = torch.randn(num_output, batch_size)
     
     for t in range(100):
-
-        if(dist.get_rank() in [0, 1]):
-            index_list = np.arange(m)
-            np.random.shuffle(index_list)
-
         assignments = np.arange(0, 2 + num_slaves)
         h = layer(W1, x, assignments, 0)
 
         if(dist.get_rank() == 0):
             h_relu = h.clamp(min=0)
-        #else:
-        #    h_relu = torch.zeros(m, batch_size)
-
-        #dist.scatter(W2_s, shards, 0, group, async_op=True)
-        #dist.broadcast(h_relu, 0, async_op=True)
-
-        #y_pred = layer(W2_s, h_relu, assignments, 0)
-
-
-        if(dist.get_rank() == 0):
 
             y_pred = W2.mm(h_relu)
 
@@ -171,11 +154,11 @@ def net(drop):
 
             # Backprop to compute gradients of w1 and w2 with respect to loss
             grad_y_pred = 2.0 * (y_pred - y)
-            grad_w2 = grad_y_pred.mm(h_relu.t()) #h_relu.t().mm(grad_y_pred)
-            grad_h_relu = W2.t().mm(grad_y_pred) #grad_y_pred.mm(w2.t())
+            grad_w2 = grad_y_pred.mm(h_relu.t()) 
+            grad_h_relu = W2.t().mm(grad_y_pred)
             grad_h = grad_h_relu.clone()
             grad_h[h < 0] = 0
-            grad_w1 = grad_h.mm(x.t()) #x.t().mm(grad_h)
+            grad_w1 = grad_h.mm(x.t())
 
             # Update weights using gradient descent
             W1 -= learning_rate * grad_w1
