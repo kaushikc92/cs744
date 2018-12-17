@@ -15,6 +15,10 @@ import pdb
 import math
 import random
 
+import torch.nn.functional as F
+import torch.nn as nn
+
+
 DEBUG = False
 
 def getIP():
@@ -115,19 +119,19 @@ def layer(W, x, assignments, drop, m, n):
         pass
 
 
-def net(drop):
+def net():
 
     np.random.seed(0)
 
-    m = 100000 #1000
+    m = 10000 #1000
     n = 100  #100
     num_output =10
     batch_size = 64
     num_slaves = 2
 
     master = 0
-    learning_rate = 1e-8
-    dropout = 0.5
+    learning_rate = 1e-3
+    dropout = 0.2
 
     W1 = None
     W2_t = None
@@ -140,8 +144,11 @@ def net(drop):
         W1 = torch.randn(m, n)
         W2 = torch.randn(num_output, m)
         x = torch.randn(n, batch_size)
-        y = torch.randn(num_output, batch_size)
-
+        
+        y = torch.zeros(batch_size, dtype=torch.long)
+        for i in range(batch_size):
+            y[i] = random.randint(0, num_output-1)
+        
         start = time.time()
     
     for t in range(100):
@@ -151,15 +158,17 @@ def net(drop):
             h_relu = h.clamp(min=0)
 
             y_pred = W2.mm(h_relu)
+            y_pred.requires_grad_(True)
+            y_soft = (F.log_softmax(y_pred, dim=0)).t()
 
             # Compute and print loss
-            loss = (y_pred - y).pow(2).sum().item()
-
+            loss = F.nll_loss(y_soft, y)
             if t % 10 == 0:
-                print(t, math.log10(loss))
+                print(t, loss.item())
 
             # Backprop to compute gradients of w1 and w2 with respect to loss
-            grad_y_pred = 2.0 * (y_pred - y)
+            loss.backward()
+            grad_y_pred = y_pred.grad
             grad_w2 = grad_y_pred.mm(h_relu.t()) 
 
             #grad_h_relu = W2.t().mm(grad_y_pred)
@@ -182,25 +191,8 @@ def net(drop):
 
 
 def init_processes(fn, backend='mpi'):
-    """ Initialize the distributed environment. """
-    #os.environ['MASTER_ADDR'] = '127.0.0.1'
-    #os.environ['MASTER_PORT'] = '29500'
     dist.init_process_group(init_method='env://', backend='mpi')
-    '''
-    processes = []
-    for i in range(0,10):
-        p = Process(target = fn)
-        processes.append(p)
-        p.start()
-
-    for p in processes:
-        p.join()
-    '''
-    
-    ITER = 1
-
-    for i in range(ITER):
-        fn(0.5)
+    fn() 
     
 
 if __name__ == "__main__":
