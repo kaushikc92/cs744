@@ -13,6 +13,7 @@ import time
 from multiprocessing import Process
 import pdb
 import math
+import random
 
 DEBUG = False
 
@@ -32,11 +33,10 @@ def getAddress():
 def straggler():
     #r = np.random.random_sample()
     #time.sleep(r)
-
-    shut = np.random.random_sample()
-    if(shut > 0.8):
+    shut = random.random()
+    if(shut > 0.9):
         #print(str(dist.get_rank())+":Failure..")
-        time.sleep(5)
+        time.sleep(.01)
         #print(str(dist.get_rank())+":Revived")
 
 
@@ -45,7 +45,8 @@ def shout(msg):
         print("Node " + str(dist.get_rank()) + " " + str(getAddress()) + " " + str(msg))
 
 def layer(W, x, assignments, drop, m, n):
-    t1 = time.time()
+
+    np.random.shuffle(assignments[1:])
     master = assignments[0]
     pseudo_master = assignments[1]
     slaves = assignments[2:]
@@ -58,14 +59,14 @@ def layer(W, x, assignments, drop, m, n):
     W_s = torch.zeros(m//num_slaves, n)
     shards = []
 
-    if(dist.get_rank() in [0, 1]):
-        index_list = np.arange(m)
-        np.random.shuffle(index_list)
+    #if(dist.get_rank() in [master, pseudo_master]):
+    index_list = np.arange(m)
+    np.random.shuffle(index_list)
 
-    if(dist.get_rank() == 0):
-            shards = [W_s] + [W[index_list[m//num_slaves*i:m//num_slaves*(i+1)]] for i in range(num_slaves)] 
+    if(dist.get_rank() == master):
+        shards = [W_s] + [W[index_list[m//num_slaves*i:m//num_slaves*(i+1)]] for i in range(num_slaves)] 
 
-    group = dist.new_group([0] + [i for i in range(2,2+num_slaves)])
+    #group = dist.new_group([0] + [i for i in range(2,2+num_slaves)])
     group = dist.new_group([master] + list(slaves))
     dist.scatter(W_s, shards, master, group)
     dist.broadcast(x, master)
@@ -75,7 +76,6 @@ def layer(W, x, assignments, drop, m, n):
 
         req = dist.irecv(tensor=y, src=pseudo_master)
         req.wait()
-        t2 = time.time()
         return y
 
     elif(dist.get_rank() == pseudo_master):
@@ -105,6 +105,7 @@ def layer(W, x, assignments, drop, m, n):
 
     
     elif(dist.get_rank() in slaves):
+        #straggler()
         out = torch.zeros(m//num_slaves, p)
         out[:] = torch.matmul(W_s, x)/(1 - drop)
         req = dist.isend(tensor=out, dst=pseudo_master)
@@ -118,29 +119,32 @@ def net(drop):
 
     np.random.seed(0)
 
-    m = 1000 #1000
+    m = 100000 #1000
     n = 100  #100
     num_output =10
     batch_size = 64
-    num_slaves = 10
+    num_slaves = 2
 
     master = 0
-    learning_rate = 1e-6
-    dropout = 0
+    learning_rate = 1e-8
+    dropout = 0.5
 
     W1 = None
     W2_t = None
     x = torch.empty(n, batch_size)
     grad_y_pred = torch.empty(num_output, batch_size)
 
+    assignments = np.arange(0, 2 + num_slaves)
+
     if(dist.get_rank() == 0):
         W1 = torch.randn(m, n)
         W2 = torch.randn(num_output, m)
         x = torch.randn(n, batch_size)
         y = torch.randn(num_output, batch_size)
+
+        start = time.time()
     
     for t in range(100):
-        assignments = np.arange(0, 2 + num_slaves)
         h = layer(W1, x, assignments, dropout, m, n)
 
         if(dist.get_rank() == 0):
@@ -171,6 +175,10 @@ def net(drop):
             # Update weights using gradient descent
             W1 -= learning_rate * grad_w1
             W2 -= learning_rate * grad_w2
+
+    if dist.get_rank() ==  0:
+        end = time.time()
+        print('Total Time = {}'.format(end - start))
 
 
 def init_processes(fn, backend='mpi'):
