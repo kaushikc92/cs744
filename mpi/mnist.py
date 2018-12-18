@@ -200,7 +200,6 @@ def net():
                 grad_y_pred = y_pred.grad
                 grad_w2 = grad_y_pred.mm(h_relu.t()) 
 
-                #grad_h_relu = W2.t().mm(grad_y_pred)
                 W2_t = W2.t()
 
             grad_h_relu = layer(W2_t, grad_y_pred, assignments, 0, m, num_output)

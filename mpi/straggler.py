@@ -210,12 +210,7 @@ def net():
                 grad_y_pred = y_pred.grad
                 grad_w2 = grad_y_pred.mm(h_relu.t()) 
 
-                #grad_h_relu = W2.t().mm(grad_y_pred)
-                W2_t = W2.t()
-
-            grad_h_relu = layer(W2_t, grad_y_pred, assignments, 0, m, num_output)
-            
-            if(dist.get_rank() == 0):
+                grad_h_relu = W2.t().mm(grad_y_pred)
                 grad_h = grad_h_relu.clone()
                 grad_h[h <= 0] = 0
                 grad_w1 = grad_h.mm(x.t())
